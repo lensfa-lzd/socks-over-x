@@ -1,0 +1,8 @@
+supyr-struct
+selection
+asyncio
+pybase64
+sockets
+threaded
+websockets
+pypi-json
