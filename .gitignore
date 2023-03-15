@@ -128,3 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 /debug.py
+/debug_2.py
+/import_debug.py
+/websocket/debug.py
+/websocket_debug/
