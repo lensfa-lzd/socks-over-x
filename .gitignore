@@ -132,3 +132,5 @@ dmypy.json
 /import_debug.py
 /websocket/debug.py
 /websocket_debug/
+/websocket/test_cfg.yaml
+/http3_debug/

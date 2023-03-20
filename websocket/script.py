@@ -1,96 +1,54 @@
 # -*- coding: UTF-8 -*-
-
-import base64
-
-import json
-import logging
+import socket
+import struct
 
 
-def process_data_tcp(client_id, raw_data):
-    # 尝试不使用json和base64来提升性能, 结果性能没有多少变化，/(ㄒoㄒ)/~~
-    """
-
-    :param client_id: srt
-    :param raw_data: bytes
-    :return:
-    """
-    # b64_encoded_str = base64.b64encode(raw_data).decode('utf-8')
-    # json_data = {
-    #     'client_id': client_id,
-    #     'data': b64_encoded_str
-    # }
-    # json_srt = json.dumps(json_data)
-    # # 原始数据包中加上客户端的id
-    # return json_srt
-    # logging.warning(str(client_id))
-
+def pack_data(data_id: str, raw_data: bytes) -> bytes:
     # 前三个字节存放client_id的长度，考虑到128位的ipv6，也应该足够了
-    client_id = client_id.encode('UTF-8')
-    len_client_id = str(len(client_id)).zfill(3).encode('UTF-8')
-
-    process_data = len_client_id + client_id + raw_data
+    data_id = data_id.encode('UTF-8')
+    # len_client_id = str(len(client_id)).zfill(3).encode('UTF-8')
+    # 将数字转换为一个字节，即一个元素的字节串, 小于256的非负整数
+    len_id = bytes([len(data_id)])
+    process_data = len_id + data_id + raw_data
     return process_data
 
 
-def process_data_websocket(raw_data):
-    # json_data = json.loads(raw_data)
-    # # 从原始数据包中解析出客户端的id
-    # client_id = json_data['client_id']
-    # b64_encoded = json_data['data'].encode('utf-8')
-    # raw_data = base64.b64decode(b64_encoded)
-    #
-    # return client_id, raw_data
-
-    # 前三个字节存放client_id的长度，考虑到128位的ipv6，也应该足够了
-    len_client_id = int(raw_data[:3].decode('UTF-8'))
-
-    client_id = raw_data[3:len_client_id+3].decode('UTF-8')
-    data = raw_data[len_client_id+3:]
-    return client_id, data
+def unpack_data(raw_data: bytes) -> (str, bytes):
+    len_id = raw_data[0]
+    data_id = raw_data[1: len_id + 1].decode('UTF-8')
+    data = raw_data[len_id + 1:]
+    return data_id, data
 
 
-def re_pack(websocket_id, client_id, raw_data):
-    """
-    将原始数据加上websocket的id，以便识别
+def unpack_socks_data(raw_data: bytes) -> (str, int):
+    address_type = raw_data[0]
 
-    :param client_id:
-    :param websocket_id:
-    :param raw_data:
-    :return:
-    """
-    # b64_encoded_str = base64.b64encode(raw_data).decode('utf-8')
-    # # 在两个id之间加上便于识别的分隔符
-    # json_data = {
-    #     'client_id': websocket_id + '*' + client_id,
-    #     'data': b64_encoded_str
-    # }
-    # json_srt = json.dumps(json_data)
-    # # 原始数据包中加上客户端的id
-    # return json_srt
-    ids = websocket_id + '*' + client_id
+    if address_type == 1:  # IPv4
+        res_data = raw_data[1: 5]
+        address = socket.inet_ntoa(res_data)
+        data_length = 5
+    elif address_type == 3:  # Domain name
+        res_data = raw_data[1: 2]
+        domain_length = res_data[0]
+        address = raw_data[2: 2 + domain_length]
+        data_length = 2 + domain_length
+    elif address_type == 4:  # IPv6
+        addr_ip = raw_data[1: 17]
+        address = socket.inet_ntop(socket.AF_INET6, addr_ip)
+        data_length = 17
+    else:
+        return None, None
 
-    ids = ids.encode('UTF-8')
-    len_ids = str(len(ids)).zfill(3).encode('UTF-8')
+    port_data = raw_data[data_length:]
+    port = struct.unpack('!H', port_data)[0]
 
-    process_data = len_ids + ids + raw_data
-    return process_data
+    return address, port
 
 
-def unpack(raw_data):
-    # json_data = json.loads(raw_data)
-    # b64_encoded = json_data['data'].encode('utf-8')
-    # raw_data = base64.b64decode(b64_encoded)
-    # websocket_client_id = json_data['client_id']
-    # websocket_id, client_id = websocket_client_id.split('*')
-    #
-    # return websocket_id, client_id, raw_data
+def make_socks_pkg(ip_address: str, port: int) -> bytes:
+    ip_strs = ip_address.split('.')
+    ip_data = bytes([1])
+    for ip_str in ip_strs:
+        ip_data = ip_data + bytes([int(ip_str)])
 
-    len_client_id = int(raw_data[:3].decode('UTF-8'))
-    # len_data = int(raw_data[len_client_id+1])
-
-    ids = raw_data[3:len_client_id+3].decode('UTF-8')
-    data = raw_data[len_client_id + 3:]
-
-    websocket_id, client_id = ids.split('*')
-    return websocket_id, client_id, data
-
+    return ip_data + struct.pack('!H', port)

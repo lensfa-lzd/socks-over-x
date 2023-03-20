@@ -5,4 +5,4 @@ pybase64
 sockets
 threaded
 websockets
-pypi-json
+pyyaml
