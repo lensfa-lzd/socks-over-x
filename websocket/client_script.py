@@ -3,7 +3,7 @@ import logging
 import struct
 import time
 from random import choice
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import websockets
 
@@ -33,6 +33,10 @@ class WebsocketHandler:
         self.ws_ids: List[int] = []
         self.ws_connections: Dict = {}
 
+        # websocket id与task id的对应关系表
+        self.task_websocket: Dict[str, int] = {}
+        self.websocket_task: Dict[int, Set[str]] = {}
+
         self.event_send_queue: Dict[int, asyncio.Queue[bytes]] = {}
 
         self.sleep = False
@@ -45,17 +49,30 @@ class WebsocketHandler:
             self.ws_status.append(False)
             self.ws_ids.append(i)
             self.event_send_queue[i] = asyncio.Queue()
+            self.websocket_task[i] = set()
 
     def event_recv(self, event: bytes) -> None:
+        # 每个task会绑定一个websocket id，也就是一直使用同一个websocket id进行传输
         self.last_event_time = time.time()
+        client_id, event_data = unpack_data(event)
+        task_id, task = unpack_data(event_data)
 
         if not self.sleep:
             ws_id_valid = [i for i in range(len(self.ws_status)) if self.ws_status[i]]
             if ws_id_valid:
                 # 一切正常
-                ws_id = choice(ws_id_valid)
-                logging.debug(f'WebsocketHandler: Recv data from socks server, length {len(event)}')
-                self.event_send_queue[ws_id].put_nowait(event)
+                if task_id not in self.task_websocket:
+                    ws_id = choice(ws_id_valid)
+                    self.task_websocket[task_id] = ws_id
+                    self.websocket_task[ws_id].add(task_id)
+
+                ws_id = self.task_websocket.get(task_id, None)
+                logging.debug(f'1 WebsocketServer: Drop task: {ws_id}')
+                if ws_id is not None:
+                    logging.debug(f'WebsocketHandler: Recv data from socks server, length {len(event)}')
+                    self.event_send_queue[ws_id].put_nowait(event)
+                else:
+                    logging.debug(f'WebsocketServer: Drop task: {task_id}, length {len(task)}')
 
                 if len(ws_id_valid) < self.num_connections:
                     # 部分正常，给主程序发送信息，告知有websocket断线
@@ -68,8 +85,6 @@ class WebsocketHandler:
 
         else:
             # sleep状态下不对空包作相应
-            client_id, event_data = unpack_data(event)
-            task_id, task = unpack_data(event_data)
             if task:
                 logging.debug(f'WebsocketHandler: Websocket handler sleep, so pause data, length {len(event)}')
                 self.event_cache.put_nowait(event)
@@ -80,7 +95,7 @@ class WebsocketHandler:
         while num_retry != 0 and self.ws_status[ws_id] is False:
             try:
                 # 自动ipv6优先，前提是服务端要开启
-                ws = await websockets.connect(self.uri)
+                ws = await websockets.connect(self.uri, compression=None)
                 logging.info(f"WebsocketHandler: Connect to {self.uri} success.")
                 self.ws_status[ws_id] = True
                 self.ws_connections[ws_id] = ws
@@ -111,6 +126,8 @@ class WebsocketHandler:
                 self.ws_status[ws_id] = False
                 return
 
+            # 接受event应该也影响睡眠时间
+            self.last_event_time = time.time()
             task_id, task_data = unpack_data(task)
             self.send_to_client(task_id, task_data)
 
@@ -145,7 +162,17 @@ class WebsocketHandler:
             for task in pending:
                 task.cancel()
 
-            self.send_to_client(b'', b'')
+            # 表明一个websocket连接断开，需要关闭绑定的task
+            # self.send_to_client(b'', b'')
+            task_ids = self.websocket_task.get(ws_id, None)
+            if task_ids:
+                for task_id in task_ids:
+                    _ = self.task_websocket.pop(task_id, None)
+                    # 只断开对应的task任务即可
+                    self.send_to_client(task_id, b'')
+
+            # 重置对照表
+            self.websocket_task[ws_id] = set()
 
     async def goto_sleep(self):
         self.sleep = True
@@ -331,6 +358,7 @@ class SocksServer:
 
         # 开始处理socks连接的认证
         send_data = await socks_auth(reader, writer)
+
         if send_data:
             # 认证成功, 启动发送协程
             sender_task = asyncio.ensure_future(self.socks_sender(task_id))
@@ -402,55 +430,68 @@ async def socks_auth(reader, writer) -> bytes:
     # 协商
     # 从客户端读取并解包两个字节的数据
     header = await reader.read(2)
+
     try:
         version, nmethods = struct.unpack("!BB", header)
         if version != socks_version or not nmethods > 0:
-            await writer.close()
+            await close_writer(writer)
             return b''
-
-        # 接受支持的方法
-        methods = []
-        for i in range(nmethods):
-            method = await reader.read(1)
-            methods.append(ord(method))
-
-        # 无需认证
-        if 0 not in set(methods):
-            await writer.close()
-            return b''
-
-        # 发送协商响应数据包
-        writer.write(struct.pack("!BB", socks_version, 0))
-        await writer.drain()
-
-        # 请求
-        res_data = await reader.read(4)
-        version, cmd, _, address_type = struct.unpack("!BBBB", res_data)
-
-        if cmd == 1:
-            if address_type == 1:  # IPv4
-                res_data = await reader.read(4)
-                send_data = bytes([address_type]) + res_data
-            elif address_type == 3:  # Domain name
-                res_data = await reader.read(1)
-                domain_length = res_data[0]
-                res_data = await reader.read(domain_length)
-                send_data = bytes([address_type]) + bytes([domain_length]) + res_data
-            elif address_type == 4:  # IPv6
-                res_data = await reader.read(16)
-                send_data = bytes([address_type]) + res_data
-            else:
-                await writer.close()
-                return b''
-        else:
-            await writer.close()
-            return b''
-
-        port_data = await reader.read(2)
-
     except Exception as err:
         logging.debug(f'SocksServer: {str(err)}')
-        await writer.close()
+        await close_writer(writer)
         return b''
 
+    # 接受支持的方法
+    methods = []
+    for i in range(nmethods):
+        method = await reader.read(1)
+        methods.append(ord(method))
+
+    # 无需认证
+    if 0 not in set(methods):
+        await close_writer(writer)
+        return b''
+
+    # 发送协商响应数据包
+    writer.write(struct.pack("!BB", socks_version, 0))
+    await writer.drain()
+
+    # 请求
+    res_data = await reader.read(4)
+
+    try:
+        version, cmd, _, address_type = struct.unpack("!BBBB", res_data)
+    except Exception as err:
+        logging.debug(f'SocksServer: {str(err)}')
+        await close_writer(writer)
+        return b''
+
+    if cmd == 1:
+        if address_type == 1:  # IPv4
+            res_data = await reader.read(4)
+            send_data = bytes([address_type]) + res_data
+        elif address_type == 3:  # Domain name
+            res_data = await reader.read(1)
+            domain_length = res_data[0]
+            res_data = await reader.read(domain_length)
+            send_data = bytes([address_type]) + bytes([domain_length]) + res_data
+        elif address_type == 4:  # IPv6
+            res_data = await reader.read(16)
+            send_data = bytes([address_type]) + res_data
+        else:
+            await close_writer(writer)
+            return b''
+    else:
+        await close_writer(writer)
+        return b''
+
+    port_data = await reader.read(2)
+
     return send_data + port_data
+
+
+async def close_writer(writer) -> None:
+    try:
+        await writer.close()
+    except Exception as err:
+        logging.debug(f'SocksServer: {str(err)}')

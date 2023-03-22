@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import struct
 from random import choice
 from typing import Dict, Set, Optional
@@ -214,8 +215,14 @@ class WebsocketServer:
         # 记录每一个唯一client id所包含的websocket连接的id，方便一个客户端通过不同的websocket连接发送数据
         self.client_register: Dict[str, Set[str]] = {}
         self.websocket_register: Dict = {}
+
         # websocket id与client id的对应关系表
-        self.table: Dict[str, str] = {}
+        self.websocket_client: Dict[str, str] = {}
+
+        # websocket id与task id的对应关系表
+        self.task_websocket: Dict[str, str] = {}
+        self.websocket_task: Dict[str, Set[str]] = {}
+
 
     async def serve(self) -> None:
         async with await websockets.serve(
@@ -224,7 +231,8 @@ class WebsocketServer:
                 # 定义监听地址，None为监听所有地址
                 None,
                 # 定义端口
-                self.port
+                self.port,
+                compression=None,
         ):
             logging.warning(f'WebsocketServer: Websocket listening on port {self.port}')
             await asyncio.Future()
@@ -240,13 +248,14 @@ class WebsocketServer:
         self.websocket_register[websocket_id] = websocket
 
         try:
-            async for message in websocket:
-                if not message:
+            async for event in websocket:
+                if not event:
                     # 不对空包进行处理
                     continue
 
                 try:
-                    client_id, event = unpack_data(message)
+                    client_id, task = unpack_data(event)
+                    task_id, task_data = unpack_data(task)
                 except Exception as err:
                     logging.debug(f'WebsocketServer: ' + str(err))
                     logging.info(f'WebsocketServer: Illegal pkg')
@@ -254,7 +263,9 @@ class WebsocketServer:
                     await self.error_reply(websocket_id, websocket)
                     continue
 
-                if client_id not in self.clients:
+                # 用前缀表示一组客户端: sox-001，sox-002
+                prefix_id, client_name = client_id.split('-', 1)
+                if prefix_id not in self.clients:
                     logging.info(f'WebsocketServer: Illegal client')
                     await self.error_reply(websocket_id, websocket)
                     continue
@@ -275,11 +286,21 @@ class WebsocketServer:
                     self.client_register[client_id] = set()
 
                 # 新连接和再次连接都应该注册对照表
-                self.table[websocket_id] = client_id
+                self.websocket_client[websocket_id] = client_id
                 self.client_register[client_id].add(websocket_id)
 
+                if task_id not in self.task_websocket:
+                    # 将task id与对应的websocket id记录在对应表中
+                    self.task_websocket[task_id] = websocket_id
+
+                if websocket_id not in self.websocket_task:
+                    self.websocket_task[websocket_id] = set()
+
+                self.websocket_task[websocket_id].add(task_id)
+
                 handler = self.client_handlers[client_id]
-                handler.event_recv(event)
+                handler.event_recv(task)
+
 
         except Exception as err:
             # websocket 连接已经断开, 异常退出
@@ -289,15 +310,17 @@ class WebsocketServer:
         await self.close(websocket_id)
 
     async def send(self, client_id: str, task: bytes) -> None:
-        websocket_ids_sets = self.client_register.get(client_id)
-        websocket_ids = []
-        for websocket_id in websocket_ids_sets:
-            websocket_ids.append(websocket_id)
+        # 每个task会绑定一个websocket id，也就是一直使用同一个websocket id进行传输
 
-        if len(websocket_ids) != 0:
-            # 随机抽取客户端
-            websocket_id = choice(websocket_ids)
-            ws = self.websocket_register.get(websocket_id)
+        # websocket_ids_sets = self.client_register.get(client_id)
+        # websocket_ids = []
+        # for websocket_id in websocket_ids_sets:
+        #     websocket_ids.append(websocket_id)
+
+        task_id, task_data = unpack_data(task)
+        ws_id = self.task_websocket.get(task_id, None)
+        if ws_id:
+            ws = self.websocket_register.get(ws_id, None)
             if ws:
                 try:
                     await ws.send(task)
@@ -308,8 +331,24 @@ class WebsocketServer:
                 logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
 
         else:
-            # 客户端断线，丢弃数据
             logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
+
+        # if len(websocket_ids) != 0:
+        #     # 随机抽取客户端
+        #     websocket_id = choice(websocket_ids)
+        #     ws = self.websocket_register.get(websocket_id)
+        #     if ws:
+        #         try:
+        #             await ws.send(task)
+        #         except Exception as err:
+        #             logging.debug(f'WebsocketServer: ' + str(err))
+        #             logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
+        #     else:
+        #         logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
+        #
+        # else:
+        #     # 客户端断线，丢弃数据
+        #     logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
 
     async def error_reply(self, websocket_id: str, ws) -> None:
         # 对异常包进行回复
@@ -321,19 +360,31 @@ class WebsocketServer:
     async def close(self, websocket_id: str) -> None:
         # 关闭websocket一个连接
         _ = self.websocket_register.pop(websocket_id, None)
-        client_id = self.table.get(websocket_id)
+        client_id = self.websocket_client.get(websocket_id)
 
         logging.warning(f'WebsocketServer: connection at {websocket_id} with client {client_id} close')
         if client_id:
             # 排除这个websocket连接/将连接标记为不可用
             self.client_register[client_id].discard(websocket_id)
             # 也要从对照表中排除
-            _ = self.table.pop(websocket_id, None)
+            _ = self.websocket_client.pop(websocket_id, None)
 
-            if len(self.client_register[client_id]) == 0:
-                # 不等待直接清空数据
-                handler = self.client_handlers[client_id]
-                handler.event_recv(b'')
+            task_ids = self.websocket_task.pop(websocket_id, None)
+
+            handler = self.client_handlers[client_id]
+
+            if task_ids:
+                for task_id in task_ids:
+                    _ = self.task_websocket.pop(task_id, None)
+                    task = pack_data(task_id, b'')
+                    # 只断开对应的task任务即可
+                    handler.event_recv(task)
+
+            # if len(self.client_register[client_id]) == 0:
+            #     # 不等待直接清空数据
+            #     handler = self.client_handlers[client_id]
+            #     handler.event_recv(b'')
+
         else:
             # 说明该websocket连接从未传来过信息，不用处理
             pass
