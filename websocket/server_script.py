@@ -1,13 +1,17 @@
 import asyncio
 import logging
-import socket
 import struct
-from random import choice
 from typing import Dict, Set, Optional
 
 import websockets
 
 from script import pack_data, unpack_data, unpack_socks_data
+
+import sys
+# 在windows上不支持
+if 'win' not in sys.platform:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
 class SocksHandler:
@@ -222,7 +226,6 @@ class WebsocketServer:
         # websocket id与task id的对应关系表
         self.task_websocket: Dict[str, str] = {}
         self.websocket_task: Dict[str, Set[str]] = {}
-
 
     async def serve(self) -> None:
         async with await websockets.serve(

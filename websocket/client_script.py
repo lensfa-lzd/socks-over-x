@@ -9,6 +9,12 @@ import websockets
 
 from script import pack_data, unpack_data
 
+import sys
+# 在windows上不支持
+if 'win' not in sys.platform:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
 
 class WebsocketHandler:
     def __init__(
@@ -434,11 +440,11 @@ async def socks_auth(reader, writer) -> bytes:
     try:
         version, nmethods = struct.unpack("!BB", header)
         if version != socks_version or not nmethods > 0:
-            await close_writer(writer)
+            writer.close()
             return b''
     except Exception as err:
         logging.debug(f'SocksServer: {str(err)}')
-        await close_writer(writer)
+        writer.close()
         return b''
 
     # 接受支持的方法
@@ -449,7 +455,7 @@ async def socks_auth(reader, writer) -> bytes:
 
     # 无需认证
     if 0 not in set(methods):
-        await close_writer(writer)
+        writer.close()
         return b''
 
     # 发送协商响应数据包
@@ -463,7 +469,7 @@ async def socks_auth(reader, writer) -> bytes:
         version, cmd, _, address_type = struct.unpack("!BBBB", res_data)
     except Exception as err:
         logging.debug(f'SocksServer: {str(err)}')
-        await close_writer(writer)
+        writer.close()
         return b''
 
     if cmd == 1:
@@ -479,10 +485,11 @@ async def socks_auth(reader, writer) -> bytes:
             res_data = await reader.read(16)
             send_data = bytes([address_type]) + res_data
         else:
-            await close_writer(writer)
+            writer.close()
             return b''
     else:
-        await close_writer(writer)
+        # await writer.close()
+        writer.close()
         return b''
 
     port_data = await reader.read(2)
@@ -490,8 +497,8 @@ async def socks_auth(reader, writer) -> bytes:
     return send_data + port_data
 
 
-async def close_writer(writer) -> None:
-    try:
-        await writer.close()
-    except Exception as err:
-        logging.debug(f'SocksServer: {str(err)}')
+# def close_writer(writer) -> None:
+#     try:
+#         writer.close()
+#     except Exception as err:
+#         logging.debug(f'SocksServer: {str(err)}')
