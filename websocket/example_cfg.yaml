@@ -3,7 +3,6 @@ local:
     buffer: 16 # 单次数据包的最大大小：Kb
     client_id: 'sox-any'
     websocket_uri: "ws://127.0.0.1:9000/handle_websocket/"
-    num_ws_connections: 1 # 同时保持的websocket连接数目, 目前看来提升websocket连接数目并不会提高速度？
     retry: 1 # websocket断线重连尝试次数
     time_out: 300 # 睡眠模式等待时间：秒
 remote:
