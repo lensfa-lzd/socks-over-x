@@ -5,12 +5,12 @@ import yaml
 from client_script import SocksServer
 
 
+# task = task_id + task_data
 async def main(
         port: int,
         buffer: int,
         client_id: str,
         websocket_uri: str,
-        num_ws_connections: int,
         retry: int,
         time_out: int,
 ) -> None:
@@ -19,7 +19,6 @@ async def main(
         buffer=buffer,
         client_id=client_id,
         websocket_uri=websocket_uri,
-        num_ws_connections=num_ws_connections,
         retry=retry,
         time_out=time_out,
     )
@@ -44,7 +43,6 @@ if __name__ == "__main__":
                 buffer=cfg['buffer'],
                 client_id=cfg['client_id'],
                 websocket_uri=cfg['websocket_uri'],
-                num_ws_connections=cfg['num_ws_connections'],
                 retry=cfg['retry'],
                 time_out=cfg['time_out'],
             )

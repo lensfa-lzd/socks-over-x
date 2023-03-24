@@ -9,6 +9,8 @@ from server_script import WebsocketServer
 # 之后，极大地增加了服务器的带宽，单线程可以跑到700Mbps，完全满足日常需求
 # 同时，多条websocket同时连接并不能获得明显的速度提升。于是在下个版本计划移除多条websocket连接的功能
 # 一个客户端只发起一条连接
+
+# task = task_id + task_data
 async def main(
         port: int,
         buffer: int,
