@@ -5,6 +5,7 @@ import yaml
 from client_script import SocksServer
 
 
+# TODO 在客户端添加指定ipv4连接的选项
 # task = task_id + task_data
 async def main(
         port: int,

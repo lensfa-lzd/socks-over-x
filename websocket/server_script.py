@@ -13,6 +13,7 @@ import sys
 if 'win' not in sys.platform:
     try:
         import uvloop
+
         uvloop.install()
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     except Exception as err_:
@@ -26,7 +27,6 @@ class SocksHandler:
             buffer: int,
             sender,
     ) -> None:
-        # 这里应该省去sock的前三步认证的工作，直接到连接的部分
         self.task_id = task_id
         self.buffer = buffer
         self.sender = sender
@@ -184,7 +184,6 @@ class ClientHandler:
             task_id, task_data = unpack_data(task)
 
             # 前者为首次连接，后者为曾经连接过但是已经结束任务
-            # if task_id not in self.socks_handlers or not self.socks_handlers[task_id]:
             if task_id not in self.socks_handlers or self.socks_handlers[task_id] is None:
                 self.socks_handlers[task_id] = SocksHandler(
                     task_id=task_id,
@@ -207,7 +206,6 @@ class ClientHandler:
         )
 
 
-# 一个客户端可以拥有多个websocket连接
 # client id是全局唯一的
 class WebsocketServer:
     def __init__(
@@ -226,14 +224,6 @@ class WebsocketServer:
 
         self.client_websocket: Dict[str, str] = {}
         self.websocket_client: Dict[str, str] = {}
-
-        # self.client_task: Dict[str, Set[str]] = {}
-        # # websocket id与client id的对应关系表
-        # self.websocket_client: Dict[str, str] = {}
-        #
-        # # websocket id与task id的对应关系表
-        # self.task_websocket: Dict[str, str] = {}
-        # self.websocket_task: Dict[str, Set[str]] = {}
 
     async def serve(self) -> None:
         async with await websockets.serve(
@@ -303,33 +293,6 @@ class WebsocketServer:
 
                 logging.debug(f'WebsocketServer: Recv event from client {client_id}, length {len(task)}')
 
-                # # 一个全新的客户端连接
-                # if client_id not in self.client_handlers:
-                #     # 对唯一的客户端启动一个全新的类
-                #     self.client_handlers[client_id] = ClientHandler(
-                #         buffer=self.buffer,
-                #         client_id=client_id,
-                #         websocket_sender=self.send,
-                #     )
-                #     # 相当于启动对应类中的主程序
-                #     asyncio.ensure_future(self.client_handlers[client_id].run())
-                #
-                #     self.client_register[client_id] = set()
-
-                # 新连接和再次连接都应该注册对照表
-                # self.websocket_client[websocket_id] = client_id
-                # self.client_register[client_id].add(websocket_id)
-
-                # task_id, task_data = unpack_data(task)
-                # if task_id not in self.task_websocket:
-                #     # 将task id与对应的websocket id记录在对应表中
-                #     self.task_websocket[task_id] = websocket_id
-                #
-                # if websocket_id not in self.websocket_task:
-                #     self.websocket_task[websocket_id] = set()
-                #
-                # self.websocket_task[websocket_id].add(task_id)
-
                 handler = self.client_handlers[client_id]
                 handler.event_recv(task)
 
@@ -342,11 +305,6 @@ class WebsocketServer:
 
     async def send(self, client_id: str, task: bytes) -> None:
         # 每个task会绑定一个websocket id，也就是一直使用同一个websocket id进行传输
-
-        # websocket_ids_sets = self.client_register.get(client_id)
-        # websocket_ids = []
-        # for websocket_id in websocket_ids_sets:
-        #     websocket_ids.append(websocket_id)
         websocket_id = self.client_websocket.get(client_id)
         if websocket_id:
             ws = self.websocket_register.get(websocket_id)
@@ -361,22 +319,6 @@ class WebsocketServer:
                 logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
         else:
             logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
-
-        # task_id, task_data = unpack_data(task)
-        # ws_id = self.task_websocket.get(task_id, None)
-        # if ws_id:
-        #     ws = self.websocket_register.get(ws_id, None)
-        #     if ws:
-        #         try:
-        #             await ws.send(task)
-        #         except Exception as err:
-        #             logging.debug(f'WebsocketServer: ' + str(err))
-        #             logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
-        #     else:
-        #         logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
-        #
-        # else:
-        #     logging.debug(f'WebsocketServer: Drop task: {client_id}, length {len(task)}')
 
     async def error_reply(self, websocket_id: str, ws) -> None:
         # 对异常包进行回复
@@ -393,28 +335,9 @@ class WebsocketServer:
         if client_id:
             _ = self.client_websocket.pop(client_id, None)
 
-            # # 排除这个websocket连接/将连接标记为不可用
-            # self.client_register[client_id].discard(websocket_id)
-            # # 也要从对照表中排除
-            # _ = self.websocket_client.pop(websocket_id, None)
-            #
-            # task_ids = self.websocket_task.pop(websocket_id, None)
-
             handler = self.client_handlers[client_id]
             # 空包表示全部断开
             handler.event_recv(b'')
-
-            # if task_ids:
-            #     for task_id in task_ids:
-            #         _ = self.task_websocket.pop(task_id, None)
-            #         task = pack_data(task_id, b'')
-            #         # 只断开对应的task任务即可
-            #         handler.event_recv(task)
-
-            # if len(self.client_register[client_id]) == 0:
-            #     # 不等待直接清空数据
-            #     handler = self.client_handlers[client_id]
-            #     handler.event_recv(b'')
 
         else:
             # 说明该websocket连接从未传来过信息，不用处理
