@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 import websockets
 
-from script import pack_data, unpack_data, unpack_socks_data
+from script.script import pack_data, unpack_data, unpack_socks_data
 
 import sys
 

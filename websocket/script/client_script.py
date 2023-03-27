@@ -7,7 +7,7 @@ from typing import Dict
 
 import websockets
 
-from script import pack_data, unpack_data
+from script.script import pack_data, unpack_data
 
 # 在windows上不支持
 if 'win' not in sys.platform:
