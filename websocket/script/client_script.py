@@ -150,7 +150,8 @@ class WebsocketHandler:
 
         self.websocket = None
 
-    async def wake_up(self):
+    async def wake_up(self):    
+        logging.warning(f'WebsocketHandler: Wake up.')
         await self.connect()
         asyncio.ensure_future(self.run_sub())
         await asyncio.sleep(1)

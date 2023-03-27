@@ -2,7 +2,7 @@ import asyncio
 import logging
 import yaml
 
-from client_script import SocksServer
+from script.client_script import SocksServer
 
 
 # TODO 在客户端添加指定ipv4连接的选项
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         level=logging.WARNING
     )
 
-    with open('test_cfg.yaml', 'r', encoding='utf-8') as file:
+    with open('config.yaml', 'r', encoding='utf-8') as file:
         cfg = yaml.safe_load(file)['local']
 
     try:

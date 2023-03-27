@@ -6,3 +6,7 @@ sockets
 threaded
 websockets
 pyyaml
+uvloop
+h2
+certifi
+aioquic

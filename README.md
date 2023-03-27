@@ -3,6 +3,50 @@
 
 
 
+## 用法
+
+目前，客户端会使用一个本地端口，提供兼容socks5的代理服务，暂时实现了TCP协议。
+1. 安装依赖
+
+   ```
+   # 建议python 3.7+
+   # uvloop是可选安装项，不支持windows平台
+   pip install -r requirements.txt
+   ```
+
+2. 修改配置文件
+
+   ```
+   # 选择协议对应的文件夹，如websocket
+   # 修改example_cfg.yaml中的内容，并重命名为config.yaml
+   # local部分对应本地的配置，remote部分为服务器的配置
+   
+   local:
+       server_port: 8000
+       buffer: 16 # 单次数据包的最大大小：Kb
+       client_id: 'sox-any'
+       websocket_uri: "ws://127.0.0.1:9000/handle_websocket/"
+       retry: 1 # websocket断线重连尝试次数
+       time_out: 300 # 睡眠模式等待时间：秒
+   remote:
+       buffer: 16 # 单次数据包的最大大小Kb
+       websocket_port: 9000
+       clients: # 允许的客户端前缀
+           ['sox']
+   ```
+
+3. 运行py脚本文件
+
+   ```
+   # 客户端
+   python client.py
+   
+   # 服务端
+   python server.py
+   ```
+
+   
+
 ## 设计理念
 
 - 选择支持或者有可能被支持的CDN加速的协议进行通讯

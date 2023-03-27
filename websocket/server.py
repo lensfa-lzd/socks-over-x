@@ -2,7 +2,7 @@ import asyncio
 import logging
 import yaml
 
-from server_script import WebsocketServer
+from script.server_script import WebsocketServer
 
 
 # task = task_id + task_data
@@ -27,7 +27,7 @@ if __name__ == "__main__":
         level=logging.WARNING
     )
 
-    with open('test_cfg.yaml', 'r', encoding='utf-8') as file:
+    with open('config.yaml', 'r', encoding='utf-8') as file:
         cfg = yaml.safe_load(file)['remote']
 
     try:
