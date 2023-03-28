@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import struct
 import sys
 import time
@@ -69,19 +70,23 @@ class WebsocketHandler:
         while num_retry != 0 and self.websocket is None:
             try:
                 # 自动ipv6优先，前提是服务端要开启
+                # headers = {'Authorization': 'Bearer my_token'} # 可以自定义header
                 ws = await websockets.connect(self.uri, compression=None)
+                # ws = await websockets.connect(self.uri, compression=None, extra_headers=headers)
+                # ws = await websockets.connect(self.uri, compression=None, family=socket.AF_INET)
+
                 # 远程连接认证
                 await ws.send(self.client_id.encode('UTF-8'))
                 auth_status = await ws.recv()
                 if auth_status != b'OK':
                     raise ConnectionError("Websocket服务端认证失败")
-                logging.info(f"WebsocketHandler: Connect to {self.uri} success.")
+                logging.warning(f"WebsocketHandler: Connect to {self.uri} success.")
                 self.websocket = ws
                 break
             except Exception as err:
                 num_retry = num_retry - 1
                 logging.info(str(err))
-                logging.info(f"WebsocketHandler: Connect to {self.uri} fail.")
+                logging.warning(f"WebsocketHandler: Connect to {self.uri} fail.")
                 self.websocket = None
                 await asyncio.sleep(1)
 

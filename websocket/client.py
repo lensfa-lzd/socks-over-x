@@ -5,7 +5,7 @@ import yaml
 from script.client_script import SocksServer
 
 
-# TODO 在客户端添加指定ipv4连接的选项
+# TODO 考虑对udp代理的支持
 # task = task_id + task_data
 async def main(
         port: int,
@@ -28,6 +28,7 @@ async def main(
     await server.serve()
 
 
+# 可以部署在azure container app上/支持websocket
 if __name__ == "__main__":
     logging.basicConfig(
         format="%(asctime)s %(levelname)s %(name)s %(message)s",

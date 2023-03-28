@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import struct
 from typing import Dict, Optional
 
@@ -101,6 +102,10 @@ class SocksHandler:
     async def initial(self, address: str, port: int) -> bool:
         try:
             self.reader, self.writer = await asyncio.open_connection(address, port)
+            # 仅使用ipv4/ipv6
+            # self.reader, self.writer = await asyncio.open_connection(address, port, family=socket.AF_INET)
+            # self.reader, self.writer = await asyncio.open_connection(address, port, family=socket.AF_INET6)
+
             logging.info(f'SocksHandler: Connect to {address}:{port} success')
             return True
         except Exception as err:

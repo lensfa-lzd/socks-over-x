@@ -1,0 +1,11 @@
+FROM python:3.10-alpine
+
+EXPOSE 9000/tcp
+
+WORKDIR /root
+COPY websocket /root
+RUN pip install -r requirements.txt \
+	&& rm -rf /root/.cache
+
+ENV TZ=Asia/Shanghai
+CMD [ "python", "server.py" ]
