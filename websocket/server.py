@@ -1,7 +1,9 @@
+import argparse
 import asyncio
-import logging
 import yaml
 
+from typing import List
+from script.script import log_level
 from script.server_script import WebsocketServer
 
 
@@ -9,12 +11,14 @@ from script.server_script import WebsocketServer
 async def main(
         port: int,
         buffer: int,
-        clients: list
+        clients: list,
+        network: List[int]
 ) -> None:
     server = WebsocketServer(
         port=port,
         buffer=buffer,
         clients=clients,
+        network=network
     )
 
     # 相当于阻塞
@@ -22,20 +26,22 @@ async def main(
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        level=logging.WARNING
-    )
+    parser = argparse.ArgumentParser(description='Sox websocket server')
+    parser.add_argument('--config', type=str, default='config.yaml', help='config file location')
+    args = parser.parse_args()
 
-    with open('config.yaml', 'r', encoding='utf-8') as file:
+    with open(args.config, 'r', encoding='utf-8') as file:
         cfg = yaml.safe_load(file)['remote']
+
+    log_level(cfg['log_level'])
 
     try:
         asyncio.run(
             main(
                 port=cfg['websocket_port'],
                 buffer=cfg['buffer'],
-                clients=cfg['clients']
+                clients=cfg['clients'],
+                network=cfg['network']
             )
         )
     except KeyboardInterrupt:

@@ -1,4 +1,5 @@
 # -*- coding: UTF-8 -*-
+import logging
 import socket
 import struct
 
@@ -45,10 +46,23 @@ def unpack_socks_data(raw_data: bytes) -> (str, int):
     return address, port
 
 
-def make_socks_pkg(ip_address: str, port: int) -> bytes:
-    ip_strs = ip_address.split('.')
-    ip_data = bytes([1])
-    for ip_str in ip_strs:
-        ip_data = ip_data + bytes([int(ip_str)])
+# def make_socks_pkg(ip_address: str, port: int) -> bytes:
+#     ip_strs = ip_address.split('.')
+#     ip_data = bytes([1])
+#     for ip_str in ip_strs:
+#         ip_data = ip_data + bytes([int(ip_str)])
+#
+#     return ip_data + struct.pack('!H', port)
 
-    return ip_data + struct.pack('!H', port)
+
+def log_level(level: str) -> None:
+    log_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
+
+    if level == 'debug':
+        logging.basicConfig(format=log_format, level=logging.DEBUG)
+    elif level == 'info':
+        logging.basicConfig(format=log_format, level=logging.INFO)
+    else:
+        logging.basicConfig(format=log_format, level=logging.WARNING)
+
+    logging.warning('SOX: Socks over websocket v0.1.1 start')

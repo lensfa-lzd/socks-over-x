@@ -2,12 +2,24 @@ local:
     server_port: 8000
     buffer: 16 # 单次数据包的最大大小：Kb
     client_id: 'sox-any'
-    websocket_uri: "ws://127.0.0.1:9000/handle_websocket/"
+    websocket_uris: # 可以选择一组连接地址，客户端会在每次连接时，随机选择地址
+        [
+            "ws://127.0.0.1/handle_websocket/",
+            "ws://[::1]/handle_websocket/",
+            "ws://example.com/handle_websocket/"
+        ]
     retry: 1 # websocket断线重连尝试次数
-    time_out: 300 # 睡眠模式等待时间：秒
+    time_out: 60 # 睡眠模式等待时间：秒
+    network: # 控制网络栈, 这里是指客户端会尝试以那种网络连接服务端
+        [4, 6]
+    log_level: 'warning'
+
 remote:
     buffer: 16 # 单次数据包的最大大小Kb
     websocket_port: 9000
+    network: # 控制网络栈, 这里是指服务端会尝试以那种网络连接需要代理的网站
+        [4, 6]
+    log_level: 'warning'
     clients: # 允许的客户端
         ['sox']
 

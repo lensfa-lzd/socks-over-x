@@ -6,6 +6,58 @@
 ## 用法
 
 目前，客户端会使用一个本地端口，提供兼容socks5的代理服务，暂时实现了TCP协议。
+
+### 从打包的可执行文件开始
+
+使用pyinstaller库打包
+
+1. 从release下载对应平台的压缩包并解压
+
+2. 修改配置文件
+
+   ```
+   # 选择协议对应的文件夹，如websocket
+   # 修改example_cfg.yaml中的内容，并重命名为config.yaml
+   # local部分对应本地的配置，remote部分为服务器的配置
+   
+   local:
+       server_port: 8000
+       buffer: 16 # 单次数据包的最大大小：Kb
+       client_id: 'sox-any'
+       websocket_uris: # 可以选择一组连接地址，客户端会在每次连接时，随机选择地址
+           [
+               "ws://127.0.0.1/handle_websocket/",
+               "ws://[::1]/handle_websocket/",
+               "ws://example.com/handle_websocket/"
+           ]
+       retry: 1 # websocket断线重连尝试次数
+       time_out: 60 # 睡眠模式等待时间：秒
+       network: # 控制网络栈, 这里是指客户端会尝试以那种网络连接服务端
+           [4, 6]
+       log_level: 'warning'
+   
+   remote:
+       buffer: 16 # 单次数据包的最大大小Kb
+       websocket_port: 9000
+       network: # 控制网络栈, 这里是指服务端会尝试以那种网络连接需要代理的网站
+           [4, 6]
+       log_level: 'warning'
+       clients: # 允许的客户端
+           ['sox']
+   ```
+
+3. 运行可执行文件
+
+   ```
+   # linux平台需要赋予可执行权限
+   chomd +x server/client
+   
+   # 可手动指定配置文件位置，默认情况下使用相同目录的config.yaml文件
+   ./server --config.yaml
+   ```
+   
+### 从源代码开始
+
 1. 安装依赖
 
    ```
@@ -25,13 +77,25 @@
        server_port: 8000
        buffer: 16 # 单次数据包的最大大小：Kb
        client_id: 'sox-any'
-       websocket_uri: "ws://127.0.0.1:9000/handle_websocket/"
+       websocket_uris: # 可以选择一组连接地址，客户端会在每次连接时，随机选择地址
+           [
+               "ws://127.0.0.1/handle_websocket/",
+               "ws://[::1]/handle_websocket/",
+               "ws://example.com/handle_websocket/"
+           ]
        retry: 1 # websocket断线重连尝试次数
-       time_out: 300 # 睡眠模式等待时间：秒
+       time_out: 60 # 睡眠模式等待时间：秒
+       network: # 控制网络栈, 这里是指客户端会尝试以那种网络连接服务端
+           [4, 6]
+       log_level: 'warning'
+   
    remote:
        buffer: 16 # 单次数据包的最大大小Kb
        websocket_port: 9000
-       clients: # 允许的客户端前缀
+       network: # 控制网络栈, 这里是指服务端会尝试以那种网络连接需要代理的网站
+           [4, 6]
+       log_level: 'warning'
+       clients: # 允许的客户端
            ['sox']
    ```
 

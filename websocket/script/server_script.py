@@ -2,7 +2,7 @@ import asyncio
 import logging
 import socket
 import struct
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 import websockets
 
@@ -27,10 +27,12 @@ class SocksHandler:
             task_id: str,
             buffer: int,
             sender,
+            network: List[int]
     ) -> None:
         self.task_id = task_id
         self.buffer = buffer
         self.sender = sender
+        self.network = network
 
         self.socks_version = 5
         self.remote_address_type = 1
@@ -101,10 +103,15 @@ class SocksHandler:
 
     async def initial(self, address: str, port: int) -> bool:
         try:
-            self.reader, self.writer = await asyncio.open_connection(address, port)
-            # 仅使用ipv4/ipv6
-            # self.reader, self.writer = await asyncio.open_connection(address, port, family=socket.AF_INET)
-            # self.reader, self.writer = await asyncio.open_connection(address, port, family=socket.AF_INET6)
+            if 4 in self.network and 6 in self.network:
+                self.reader, self.writer = await asyncio.open_connection(address, port)
+            elif 4 in self.network:
+                self.reader, self.writer = await asyncio.open_connection(address, port, family=socket.AF_INET)
+            elif 6 in self.network:
+                self.reader, self.writer = await asyncio.open_connection(address, port, family=socket.AF_INET6)
+            else:
+                logging.warning(f"SocksHandler: Network setting error.")
+                raise SyntaxError
 
             logging.info(f'SocksHandler: Connect to {address}:{port} success')
             return True
@@ -158,10 +165,12 @@ class ClientHandler:
             buffer: int,
             client_id: str,
             websocket_sender,
+            network: List[int]
     ) -> None:
         self.buffer = buffer
         # 这个类对应于单个客户端， 每个客户端还可以启动多个socks连接
         self.client_id = client_id
+        self.network = network
         self.task_from_websocket: asyncio.Queue[bytes] = asyncio.Queue()
 
         self.websocket_sender = websocket_sender
@@ -194,6 +203,7 @@ class ClientHandler:
                     task_id=task_id,
                     buffer=self.buffer,
                     sender=self.send_event,
+                    network=self.network
                 )
                 # 启动主程序
                 asyncio.ensure_future(self.socks_handlers[task_id].run())
@@ -218,11 +228,13 @@ class WebsocketServer:
             port: int,
             buffer: int,
             clients: list,
+            network: List[int]
     ) -> None:
         self.port = port
         self.buffer = buffer
         # 合法的客户端
         self.clients = clients
+        self.network = network
 
         self.client_handlers: Dict[str, ClientHandler] = {}
         self.websocket_register: Dict = {}
@@ -287,6 +299,7 @@ class WebsocketServer:
                             buffer=self.buffer,
                             client_id=client_id,
                             websocket_sender=self.send,
+                            network=self.network
                         )
                         # 相当于启动对应类中的主程序
                         asyncio.ensure_future(self.client_handlers[client_id].run())

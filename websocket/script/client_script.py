@@ -4,10 +4,11 @@ import socket
 import struct
 import sys
 import time
-from typing import Dict
+from typing import Dict, List
 
 import websockets
 
+from random import choice
 from script.script import pack_data, unpack_data
 
 # 在windows上不支持
@@ -23,16 +24,18 @@ if 'win' not in sys.platform:
 class WebsocketHandler:
     def __init__(
             self,
-            uri: str,
+            uris: List[str],
             retry: int,
             time_out: int,
             client_id: str,
             send_to_client,
+            network: List[int]
     ) -> None:
         self.retry = retry
-        self.uri = uri
+        self.uris = uris
         self.time_out = time_out
         self.client_id = client_id
+        self.network = network
 
         self.last_event_time = time.time()
         self.send_to_client = send_to_client
@@ -59,8 +62,9 @@ class WebsocketHandler:
                 logging.debug(f'WebsocketHandler: No valid websocket connection, so pause data, length {len(task)}')
 
         else:
-            # sleep状态下不对空包作相应
-            if task:
+            # sleep状态下不对空包作相应, 应该是对task_data进行判断
+            task_id, task_data = unpack_data(task)
+            if task_data:
                 logging.debug(f'WebsocketHandler: Websocket handler sleep, so pause data, length {len(task)}')
                 self.task_cache.put_nowait(task)
 
@@ -68,25 +72,34 @@ class WebsocketHandler:
         num_retry = self.retry
         # 在已经连接上的情况下自动跳过
         while num_retry != 0 and self.websocket is None:
+            uri = choice(self.uris)
             try:
                 # 自动ipv6优先，前提是服务端要开启
                 # headers = {'Authorization': 'Bearer my_token'} # 可以自定义header
-                ws = await websockets.connect(self.uri, compression=None)
                 # ws = await websockets.connect(self.uri, compression=None, extra_headers=headers)
-                # ws = await websockets.connect(self.uri, compression=None, family=socket.AF_INET)
+
+                if 4 in self.network and 6 in self.network:
+                    ws = await websockets.connect(uri, compression=None)
+                elif 4 in self.network:
+                    ws = await websockets.connect(uri, compression=None, family=socket.AF_INET)
+                elif 6 in self.network:
+                    ws = await websockets.connect(uri, compression=None, family=socket.AF_INET6)
+                else:
+                    logging.warning(f"WebsocketHandler: Network setting error.")
+                    raise SyntaxError
 
                 # 远程连接认证
                 await ws.send(self.client_id.encode('UTF-8'))
                 auth_status = await ws.recv()
                 if auth_status != b'OK':
                     raise ConnectionError("Websocket服务端认证失败")
-                logging.warning(f"WebsocketHandler: Connect to {self.uri} success.")
+                logging.warning(f"WebsocketHandler: Connect to {uri} success.")
                 self.websocket = ws
                 break
             except Exception as err:
                 num_retry = num_retry - 1
                 logging.info(str(err))
-                logging.warning(f"WebsocketHandler: Connect to {self.uri} fail.")
+                logging.warning(f"WebsocketHandler: Connect to {uri} fail.")
                 self.websocket = None
                 await asyncio.sleep(1)
 
@@ -216,9 +229,10 @@ class SocksServer:
             port: int,
             buffer: int,
             client_id: str,
-            websocket_uri: str,
+            websocket_uris: List[str],
             retry: int,
             time_out: int,
+            network: List[int]
     ) -> None:
         self.port = port
         self.buffer = buffer
@@ -233,9 +247,10 @@ class SocksServer:
         self.websocket_connection: WebsocketHandler = WebsocketHandler(
             retry=retry,
             time_out=time_out,
-            uri=websocket_uri,
+            uris=websocket_uris,
             client_id=client_id,
             send_to_client=self.task_recv,
+            network=network
         )
 
     def generate_reply(self, reply_code: int) -> bytes:
